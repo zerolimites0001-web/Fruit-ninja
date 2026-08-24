@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="description" content="Fruit Ninja — fatie as frutas, desvie das bombas e compre upgrades nesse arcade offline!">
+<meta name="theme-color" content="#ffa000">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta property="og:type" content="website">
+<meta property="og:title" content="🗡️ Fruit Ninja">
+<meta property="og:description" content="Fatie as frutas, desvie das bombas e monte seus upgrades. Grátis e offline!">
+<meta property="og:image" content="icons/icon-512.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="favicon.ico">
+<link rel="icon" href="icons/icon-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<title>Fruit Ninja</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { height:100%; overflow:hidden; background:radial-gradient(ellipse at bottom,#3a2a1a,#120b06); font-family:'Segoe UI',system-ui,sans-serif; touch-action:none; user-select:none; }
+  canvas { display:block; }
+  #hud { position:fixed; top:14px; left:18px; color:#fff; z-index:10; pointer-events:none;
+    font-weight:800; text-shadow:0 2px 8px rgba(0,0,0,.6); }
+  #score { font-size:34px; } #best { font-size:15px; opacity:.75; margin-top:2px; }
+  #lives { position:fixed; top:16px; right:18px; z-index:10; pointer-events:none; font-size:26px; letter-spacing:4px; filter:drop-shadow(0 2px 6px rgba(0,0,0,.5)); }
+  #overlay { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background:radial-gradient(ellipse at top,rgba(60,35,10,.85),rgba(10,5,0,.92)); backdrop-filter:blur(8px); z-index:20;
+    color:#fff; text-align:center; transition:opacity .35s; }
+  .screen { display:flex; flex-direction:column; align-items:center; width:min(90vw,360px); }
+  #overlay h1 { font-size:min(13vw,64px); font-weight:900; color:#ffd54a; animation:pulse 1.6s ease-in-out infinite;
+    text-shadow:0 0 30px rgba(255,180,0,.7), 3px 4px 0 #7a4a00; transform:rotate(-3deg); }
+  @keyframes pulse { 0%,100%{transform:rotate(-3deg) scale(1)} 50%{transform:rotate(-3deg) scale(1.07)} }
+  #overlay h2 { font-size:min(9vw,42px); font-weight:900; color:#ffd54a; text-shadow:0 0 20px rgba(255,180,0,.6); }
+  .tagline { margin-top:10px; font-size:17px; opacity:.85; letter-spacing:1px; }
+  .stats { margin-top:18px; font-size:16px; font-weight:600; opacity:.9;
+    background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.15);
+    padding:10px 22px; border-radius:40px; }
+  button.btn { margin-top:14px; width:100%; padding:15px; font-size:19px; font-weight:800; letter-spacing:1px;
+    border:none; border-radius:50px; cursor:pointer; transition:transform .1s; }
+  button.btn:active { transform:scale(.96); }
+  .btn-main { color:#4a2500; background:linear-gradient(180deg,#ffe082,#ffa000); box-shadow:0 6px 22px rgba(255,160,0,.45); }
+  .btn-sec { color:#fff; background:rgba(255,255,255,.09); border:1px solid rgba(255,255,255,.25) !important; box-shadow:none; }
+  #shopCoins { font-size:24px; font-weight:800; color:#ffd54a; margin:14px 0 6px; }
+  #shopList { display:flex; flex-direction:column; gap:10px; width:100%; }
+  .hidden { opacity:0; pointer-events:none; }
+</style>
+</head>
+<body>
+<div id="hud"><div id="score">0</div><div id="best">Recorde: 0</div><div id="coins" style="font-size:18px;color:#ffd54a;margin-top:4px">🪙 0</div></div>
+<div id="lives"></div>
+<div id="overlay">
+  <!-- MENU PRINCIPAL -->
+  <div id="menuMain" class="screen">
+    <h1>FRUIT NINJA</h1>
+    <p class="tagline">🗡️ Fatie · 💣 Desvie · 🏆 Prospere</p>
+    <div class="stats" id="menuStats"></div>
+    <button id="btnPlay" class="btn btn-main">▶ &nbsp;JOGAR</button>
+    <button id="btnShop" class="btn btn-sec">🛒 &nbsp;LOJA</button>
+  </div>
+  <!-- GAME OVER -->
+  <div id="menuOver" class="screen" style="display:none">
+    <h2>GAME OVER</h2>
+    <div class="stats" id="finalScore"></div>
+    <button id="btnAgain" class="btn btn-main">🔁 &nbsp;DE NOVO</button>
+    <button id="btnMenu" class="btn btn-sec">🏠 &nbsp;MENU</button>
+  </div>
+  <!-- LOJA -->
+  <div id="menuShop" class="screen" style="display:none">
+    <h2>🛒 LOJA</h2>
+    <div id="shopCoins"></div>
+    <div id="shopList"></div>
+    <button id="btnBack" class="btn btn-sec">← &nbsp;VOLTAR</button>
+  </div>
+</div>
+<script>
+if ('serviceWorker' in navigator) {
+  addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
+}
+const cvs = document.createElement('canvas'), ctx = cvs.getContext('2d');
+document.body.appendChild(cvs);
+let W, H;
+function resize(){ W=cvs.width=innerWidth; H=cvs.height=innerHeight; }
+resize(); addEventListener('resize', resize);
+
+// ---------- fruit types ----------
+const FRUITS = [
+  { r:38, colors:['#ff5252','#c62828'], juice:'#ff5252', leaf:true },   // tomate/maçã
+  { r:40, colors:['#ffb300','#e65100'], juice:'#ffa726' },              // laranja
+  { r:42, colors:['#8bc34a','#33691e'], juice:'#aed581' },              // melancia
+  { r:34, colors:['#ffca28','#ff8f00'], juice:'#ffe082' },              // limão
+  { r:44, colors:['#66bb6a','#1b5e20'], juice:'#81c784', watermelon:true }, // melancia grande
+  { r:32, colors:['#ab47bc','#4a148c'], juice:'#ce93d8' },              // ameixa
+];
+
+// ---------- persistência: IndexedDB com fallback localStorage ----------
+const Save = {
+  db: null,
+  useIDB: 'indexedDB' in window,
+  open() {
+    if (!this.useIDB) return Promise.reject();
+    return new Promise((res, rej) => {
+      const rq = indexedDB.open('fruit-ninja', 1);
+      rq.onupgradeneeded = () => rq.result.createObjectStore('save');
+      rq.onsuccess = () => { this.db = rq.result; res(); };
+      rq.onerror = () => rej(rq.error);
+    });
+  },
+  get(k) {
+    if (!this.db) return Promise.reject();
+    return new Promise((res, rej) => {
+      const rq = this.db.transaction('save').objectStore('save').get(k);
+      rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error);
+    });
+  },
+  set(k, v) {
+    if (!this.db) return;
+    try { this.db.transaction('save', 'readwrite').objectStore('save').put(v, k); } catch(e){}
+  },
+};
+
+function lsLoad(){ // fallback + migração do formato antigo
+  let s = {};
+  try { s = JSON.parse(localStorage.getItem('fn_save')||'{}'); } catch(e){}
+  if (s.best===undefined) s.best = +(localStorage.getItem('fruit_best')||0);
+  if (s.coins===undefined) s.coins = +(localStorage.getItem('fruit_coins')||0);
+  if (s.up===undefined || typeof s.up!=='object') {
+    try { s.up = JSON.parse(localStorage.getItem('fruit_up')||'{}'); }
+    catch(e){ s.up={}; }
+  }
+  return { best:s.best||0, coins:s.coins||0, up:Object.assign({life:0,shield:0,blade:0},s.up) };
+}
+function lsSave(d){ try{ localStorage.setItem('fn_save', JSON.stringify(d)); }catch(e){} }
+
+const state = { playing:false, score:0, lives:3, best:0, combo:0 };
+let coins = 0;
+const up = { life:0, shield:0, blade:0 };
+
+function saveUp(){
+  const data = { best:state.best, coins, up };
+  lsSave(data);
+  Save.set('state', data); // fire-and-forget
+}
+const UPGRADES = [
+  { id:'life',   name:'❤️ Vida Extra',  desc:'+1 coração por partida', max:2, cost:l=>[40,100][l] },
+  { id:'shield', name:'🛡️ Escudo',      desc:'Sobrevive à 1ª bomba',   max:1, cost:l=>120 },
+  { id:'blade',  name:'🔪 Lâmina Larga', desc:'+8px de alcance no corte', max:2, cost:l=>[30,90][l] },
+];
+function maxLives(){ return 3+up.life; }
+const pieces = [], splats = [], particles = [], floats = [], pendingSpawns = [];
+let spawnTimer = 0, spawnGap = 1.2, difficulty = 0;
+
+// ---------- sprite cache (performance) ----------
+function paintFruit(c, t, opts={}){
+  const r = t.r;
+  if(opts.bomb){
+    c.fillStyle='#222';c.beginPath();c.arc(0,0,r,0,7);c.fill();
+    c.strokeStyle='#555';c.lineWidth=2;c.stroke();
+    c.fillStyle='#ffca28';c.fillRect(-r*.12,-r-10,4,12);
+    c.strokeStyle='#ff7043';c.lineWidth=3;c.beginPath();c.arc(r*.15,-r-14,6,0,7);c.stroke();
+    c.font='bold '+r*.8+'px sans-serif';c.textAlign='center';c.textBaseline='middle';c.fillText('💣',0,2);
+    return;
+  }
+  const g=c.createRadialGradient(-r*.3,-r*.3,r*.1,0,0,r);
+  g.addColorStop(0,t.colors[0]);g.addColorStop(1,t.colors[1]);
+  c.fillStyle=g;c.beginPath();c.arc(0,0,r,0,7);c.fill();
+  if(t.leaf){c.fillStyle='#43a047';c.beginPath();c.ellipse(r*.5,-r*.75,10,5,-.6,0,7);c.fill();}
+  c.fillStyle='rgba(255,255,255,.35)';c.beginPath();c.arc(-r*.3,-r*.35,r*.22,0,7);c.fill();
+}
+const sprites = new Map();
+function getSprite(t,isBomb){
+  const key=isBomb?'bomb':t.r+t.colors[0];
+  if(!sprites.has(key)){
+    const pad=26,s=document.createElement('canvas');
+    s.width=s.height=(t.r+pad)*2;
+    const c=s.getContext('2d');c.translate(s.width/2,s.height/2);
+    paintFruit(c,t,{bomb:isBomb});
+    sprites.set(key,s);
+  }
+  return sprites.get(key);
+}
+
+// ---------- blade trail ----------
+let trail = [];
+function addTrail(x,y){ trail.push({x,y,t:performance.now()}); if(trail.length>24)trail.shift(); }
+
+function pointerDown(e){ addTrail(px(e),py(e)); }
+function pointerMove(e){
+  if(trail.length===0 && !isDown()) return;
+  const x=px(e), y=py(e);
+  if(trail.length){ sliceAt(x,y,trail[trail.length-1].x,trail[trail.length-1].y); }
+  addTrail(x,y);
+}
+function px(e){ return e.touches ? e.touches[0].clientX : e.clientX; }
+function py(e){ return e.touches ? e.touches[0].clientY : e.clientY; }
+function isDown(){ return down; }
+let down=false;
+addEventListener('mousedown',e=>{down=true;pointerDown(e);});
+addEventListener('mousemove',e=>{if(down)pointerMove(e);});
+addEventListener('mouseup',()=>{down=false;trail=[];});
+addEventListener('touchstart',e=>{down=true;pointerDown(e);},{passive:true});
+addEventListener('touchmove',e=>{e.preventDefault();pointerMove(e);},{passive:false});
+addEventListener('touchend',()=>{down=false;trail=[];});
+
+// ---------- spawning ----------
+function throwFruit(isBomb){
+  const t = FRUITS[(Math.random()*FRUITS.length)|0];
+  const x = W*0.12 + Math.random()*W*0.76;
+  pieces.push({
+    type:t, x, y:H+60,
+    vx:(W/2-x)*(0.001+Math.random()*0.002),
+    vy:-(H*(1.05+Math.random()*0.25)),
+    rot:Math.random()*Math.PI*2, vr:(Math.random()-.5)*4,
+    sliced:false, bomb:!!isBomb
+  });
+}
+
+// ---------- slicing ----------
+let comboCount=0, comboTimer=0;
+function sliceAt(x,y,lx,ly){
+  if(!state.playing) return;
+  comboTimer=.35;
+  const reach=8+up.blade*8;
+  for(let i=pieces.length-1;i>=0;i--){
+    const p=pieces[i];
+    if(p.sliced||p.isHalf) continue;
+    const dx=x-lx, dy=y-ly, len=Math.hypot(dx,dy)||1;
+    const t=Math.max(0,Math.min(1,((p.x-lx)*dx+(p.y-ly)*dy)/(len*len)));
+    const cx=lx+dx*t, cy=ly+dy*t;
+    if(Math.hypot(p.x-cx,p.y-cy)<p.type.r+reach){
+      if(p.bomb){ explode(); return; }
+      cutFruit(p,i,x,y);
+    }
+  }
+}
+
+function addFloat(x,y,text,color,size){
+  if(floats.length>12)floats.shift();
+  floats.push({x,y,text,life:1,color,size:size||22});
+}
+
+function cutFruit(p,i,x,y){
+  p.sliced=true; pieces.splice(i,1);
+  comboCount++;
+  const pts = 1 + (comboCount>=3?1:0);
+  state.score+=pts; coins+=1;
+  document.getElementById('score').textContent=state.score;
+  document.getElementById('coins').textContent='🪙 '+coins;
+  if(comboCount>=3) addFloat(p.x,p.y,'COMBO x'+comboCount+'!','#ffd54a',26);
+
+  splats.push({x:p.x,y:p.y,r:p.type.r,color:p.type.juice,a:.8,grow:1});
+  if(splats.length>14)splats.shift();
+  const angle=Math.atan2(y-(trail[0]?.y||y-10), x-(trail[0]?.x||x-10));
+  for(const side of [-1,1]){
+    pieces.push({ ...p, sliced:false, isHalf:true, half:side, vx:p.vx+side*Math.cos(angle)*120+(Math.random()-.5)*80,
+      vy:p.vy-60-Math.random()*80, vr:side*(3+Math.random()*3), life:1 });
+  }
+  const np=Math.min(8, particles.length<100?8:3);
+  for(let j=0;j<np;j++){
+    particles.push({ x:p.x,y:p.y,vx:(Math.random()-.5)*350,vy:(Math.random()-.7)*350,
+      r:3+Math.random()*5,color:p.type.juice,life:1 });
+  }
+}
+
+function explode(){
+  if(up.shield && !state.shieldUsed){
+    state.shieldUsed=true;
+    shake=12; flash=.5;
+    for(let i=pieces.length-1;i>=0;i--) if(pieces[i].bomb) pieces.splice(i,1);
+    addFloat(playerX()||W/2, H/2, '🛡️ ESCUDO!', '#7CFC9A', 30);
+    return;
+  }
+  for(const p of [...pieces].slice(0,10)){
+    particles.push({x:p.x,y:p.y,vx:(Math.random()-.5)*400,vy:(Math.random()-.7)*400,r:5,color:'#999',life:1});
+  }
+  pieces.length=0;
+  boom();
+}
+function playerX(){ const p=pieces.find(p=>p.bomb); return p&&p.x; }
+
+function missFruit(){
+  state.lives--;
+  renderLives();
+  if(state.lives<=0) endGame();
+}
+
+function boom(){
+  shake=18; flash=1;
+  endGame();
+}
+
+let shake=0, flash=0, menuTimer=0;
+
+// ---------- game flow / telas ----------
+const overlay=document.getElementById('overlay');
+const screens={ main:document.getElementById('menuMain'), over:document.getElementById('menuOver'), shop:document.getElementById('menuShop') };
+const finalEl=document.getElementById('finalScore');
+
+function showScreen(name){
+  for(const k in screens) screens[k].style.display = k===name ? 'flex' : 'none';
+}
+function showMenu(){ renderMenuStats(); showScreen('main'); overlay.classList.remove('hidden'); }
+
+function renderMenuStats(){
+  document.getElementById('menuStats').innerHTML=`🏆 Recorde: <b>${state.best}</b> &nbsp;·&nbsp; 🪙 <b>${coins}</b>`;
+}
+
+document.getElementById('btnPlay').onclick=startGame;
+document.getElementById('btnAgain').onclick=startGame;
+document.getElementById('btnShop').onclick=()=>{ renderShop(); showScreen('shop'); };
+document.getElementById('btnMenu').onclick=showMenu;
+document.getElementById('btnBack').onclick=showMenu;
+
+function startGame(){
+  pieces.length=splats.length=particles.length=floats.length=pendingSpawns.length=0;
+  state.playing=true; state.score=0; state.lives=maxLives(); state.shieldUsed=false;
+  spawnTimer=0; spawnGap=1.2; difficulty=0;
+  document.getElementById('score').textContent='0';
+  document.getElementById('coins').textContent='🪙 '+coins;
+  renderLives();
+  overlay.classList.add('hidden');
+}
+
+// ---------- loja ----------
+const shopEl=document.getElementById('shopList');
+
+function renderShop(){
+  document.getElementById('shopCoins').textContent='🪙 '+coins;
+  shopEl.innerHTML='';
+  for(const u of UPGRADES){
+    const lvl=up[u.id], maxed=lvl>=u.max, cost=maxed?0:u.cost(lvl);
+    const poor=!maxed && coins<cost;              // sem moedas suficientes
+    const b=document.createElement('button');
+    b.disabled = maxed || poor;
+    b.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:10px;padding:13px 16px;font-size:15px;color:#fff;text-align:left;background:'
+      +(maxed?'rgba(124,252,154,.15)':poor?'rgba(255,255,255,.04)':'rgba(255,255,255,.08)')
+      +';border:1px solid '
+      +(maxed?'#7CFC9A':poor?'rgba(255,80,80,.4)':'rgba(255,255,255,.2)')
+      +';border-radius:16px;'
+      +((maxed||poor)?'opacity:.65;cursor:not-allowed':'cursor:pointer');
+    const dots='●'.repeat(lvl)+'○'.repeat(u.max-lvl);   // progresso do nível
+    b.innerHTML=`<span><b>${u.name}</b> <small style="color:#ffd54a">${dots}</small><br><small style="opacity:.7">${u.desc}</small></span>
+      <span style="white-space:nowrap;font-weight:800">${maxed?'✔ MAX':(poor?'🪙 '+cost+'<br><small style="color:#ff8a8a">faltam '+(cost-coins)+'</small>':'🪙 '+cost)}</span>`;
+    if(!maxed){
+      b.onclick=()=>{
+        // trava dupla: nível máximo E moedas suficientes
+        if(up[u.id]>=u.max || coins<u.cost(up[u.id])) return;
+        coins-=u.cost(up[u.id]);
+        up[u.id]++;
+        saveUp();
+        renderShop();
+      };
+    }
+    shopEl.appendChild(b);
+  }
+}
+
+function endGame(){
+  state.playing=false;
+  if(state.score>state.best){state.best=state.score;}
+  saveUp();
+  document.getElementById('best').textContent='Recorde: '+state.best;
+  finalEl.innerHTML=`Pontos: <b>${state.score}</b> &nbsp;·&nbsp; 🪙 +${state.score}<br>Recorde: <b>${state.best}</b>`;
+  showScreen('over');
+  overlay.classList.remove('hidden');
+}
+
+function renderLives(){
+  document.getElementById('lives').textContent='❤️'.repeat(Math.max(0,state.lives));
+}
+
+// boot: carrega save (IndexedDB → localStorage), depois mostra o menu
+(async function boot(){
+  try {
+    await Save.open();
+    const saved = await Save.get('state');
+    if (saved && typeof saved==='object') {
+      state.best = saved.best||0;
+      coins = saved.coins||0;
+      Object.assign(up, {life:0,shield:0,blade:0}, saved.up||{});
+    }
+  } catch(e) { /* sem IDB, usa só localStorage */ }
+  const fb = lsLoad();
+  if (!state.best && !coins && !up.life && !up.shield && !up.blade) {
+    state.best=fb.best; coins=fb.coins; Object.assign(up,fb.up);
+  }
+  document.getElementById('best').textContent='Recorde: '+state.best;
+  document.getElementById('coins').textContent='🪙 '+coins;
+  renderLives();
+  showMenu();
+})();
+
+// ---------- update ----------
+let last=performance.now();
+function tick(now){
+  requestAnimationFrame(tick);
+  const dt=Math.min((now-last)/1000,.04); last=now;
+
+  if(state.playing){
+    spawnTimer-=dt;
+    if(spawnTimer<=0){
+      difficulty+=dt*.03;
+      spawnGap=Math.max(.45, 1.25-difficulty*.25);
+      spawnTimer=spawnGap*(0.75+Math.random()*.5);
+      const n=1+((Math.random()<Math.min(.55,difficulty*.3))?1:0)+((Math.random()<Math.min(.3,difficulty*.2))?1:0);
+      for(let i=0;i<n;i++) pendingSpawns.push({t:i*.13,bomb:false});
+      if(Math.random()<Math.min(.45,.15+difficulty*.18)) pendingSpawns.push({t:n*.13+.2,bomb:true});
+    }
+    for(let i=pendingSpawns.length-1;i>=0;i--){
+      pendingSpawns[i].t-=dt;
+      if(pendingSpawns[i].t<=0){ throwFruit(pendingSpawns[i].bomb); pendingSpawns.splice(i,1); }
+    }
+    comboTimer-=dt; if(comboTimer<=0)comboCount=0;
+
+    for(let i=pieces.length-1;i>=0;i--){
+      const p=pieces[i];
+      p.vy+=H*0.9*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.rot+=p.vr*dt;
+      if(p.life!==undefined)p.life-=dt*.8;
+      if(p.y>H+120){
+        pieces.splice(i,1);
+        if(!p.half&&!p.sliced&&!p.bomb){ missFruit(); }
+      }
+    }
+  } else {
+    // frutas ambiente no menu (devagar, sem bombas)
+    menuTimer-=dt;
+    if(menuTimer<=0){ menuTimer=.9+Math.random(); throwFruit(false); for(const p of pieces){p.vy*=.55;} }
+  }
+
+  for(let i=particles.length-1;i>=0;i--){
+    const q=particles[i];
+    q.vy+=600*dt;q.x+=q.vx*dt;q.y+=q.vy*dt;q.life-=dt*1.6;
+    if(q.life<=0)particles.splice(i,1);
+  }
+  for(let i=splats.length-1;i>=0;i--){
+    const s=splats[i]; s.grow+=dt*.5; s.a-=dt*.25;
+    if(s.a<=0)splats.splice(i,1);
+  }
+  for(let i=floats.length-1;i>=0;i--){floats[i].life-=dt;if(floats[i].life<=0)floats.splice(i,1);}
+  trail=trail.filter(t=>now-t.t<90);
+  shake*=.86; flash*=.9;
+
+  draw(now);
+}
+
+// ---------- draw ----------
+function drawCircle(x,y,r,c1,c2,rot=0){
+  ctx.save();ctx.translate(x,y);ctx.rotate(rot);
+  const g=ctx.createRadialGradient(-r*.3,-r*.3,r*.1,0,0,r);
+  g.addColorStop(0,c1);g.addColorStop(1,c2);
+  ctx.fillStyle=g;ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);ctx.fill();
+  ctx.restore();
+}
+
+function drawPiece(p){
+  ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.rot);
+  const t=p.type;
+  if(p.bomb){
+    ctx.drawImage(getSprite(t,true),-t.r-26,-t.r-26);
+  } else if(p.half){
+    ctx.globalAlpha=Math.max(0,Math.min(1,p.life));
+    ctx.fillStyle=t.colors[1];
+    ctx.beginPath();ctx.arc(0,0,t.r,p.half>0?0:Math.PI,(p.half>0?Math.PI:Math.PI*2));ctx.fill();
+    ctx.fillStyle=t.juice;
+    ctx.beginPath();ctx.arc(0,0,t.r*.72,p.half>0?0:Math.PI,(p.half>0?Math.PI:Math.PI*2));ctx.fill();
+    if(t.watermelon){ctx.fillStyle='#111';for(let k=-2;k<=2;k++){ctx.save();ctx.scale(p.half,1);ctx.beginPath();ctx.arc(k*t.r*.22,0,2.4,0,7);ctx.fill();ctx.restore();}}
+    ctx.globalAlpha=1;
+  } else {
+    ctx.drawImage(getSprite(t,false),-t.r-26,-t.r-26);
+  }
+  ctx.restore();
+}
+
+function draw(now){
+  ctx.clearRect(0,0,W,H);
+  ctx.save();
+  if(shake>1)ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);
+
+  for(const s of splats){
+    ctx.globalAlpha=s.a;ctx.fillStyle=s.color;
+    ctx.beginPath();ctx.arc(s.x,s.y,s.r*s.grow,0,Math.PI*2);ctx.fill();
+    ctx.globalAlpha=s.a*.6;ctx.fillStyle='#fff';
+    ctx.beginPath();ctx.arc(s.x,s.y,s.r*s.grow*.35,0,Math.PI*2);ctx.fill();
+    ctx.globalAlpha=1;
+  }
+
+  for(const p of pieces)drawPiece(p);
+
+  for(const q of particles){
+    ctx.globalAlpha=q.life;ctx.fillStyle=q.color;
+    ctx.beginPath();ctx.arc(q.x,q.y,q.r*q.life,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;
+  }
+
+  for(const f of floats){
+    ctx.globalAlpha=f.life;ctx.fillStyle=f.color;ctx.font='bold '+f.size+'px sans-serif';ctx.textAlign='center';
+    ctx.fillText(f.text,f.x,f.y-(1-f.life)*50);ctx.globalAlpha=1;
+  }
+
+  // blade
+  if(trail.length>1){
+    for(let pass=0;pass<2;pass++){
+      ctx.beginPath();
+      ctx.moveTo(trail[0].x,trail[0].y);
+      for(const t of trail)ctx.lineTo(t.x,t.y);
+      ctx.lineCap='round';ctx.lineJoin='round';
+      if(pass===0){ctx.strokeStyle='rgba(255,255,255,.9)';ctx.lineWidth=5;}
+      else{ctx.strokeStyle='rgba(120,220,255,.5)';ctx.lineWidth=11;}
+      ctx.stroke();
+    }
+  }
+
+  if(flash>.02){ctx.fillStyle=`rgba(255,255,255,${flash})`;ctx.fillRect(0,0,W,H);}
+  ctx.restore();
+}
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
